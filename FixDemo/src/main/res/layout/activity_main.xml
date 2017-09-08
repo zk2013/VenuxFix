@@ -21,4 +21,15 @@
         android:layout_marginStart="113dp"
         android:layout_marginTop="58dp"
         android:id="@+id/cat" />
+
+    <Button
+        android:text="修复"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/cat"
+        android:layout_alignLeft="@+id/cat"
+        android:layout_alignStart="@+id/cat"
+        android:layout_marginTop="134dp"
+        android:id="@+id/fix" />
+
 </RelativeLayout>

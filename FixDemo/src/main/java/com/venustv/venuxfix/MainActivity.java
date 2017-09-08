@@ -27,28 +27,7 @@ public Cat mCat;
             "android.permission.WRITE_EXTERNAL_STORAGE" };
 
 
-    public static void verifyStoragePermissions(Activity activity) {
-
-        try {
-            //检测是否有写的权限
-            int permission = ActivityCompat.checkSelfPermission(activity,
-                    "android.permission.WRITE_EXTERNAL_STORAGE");
-            if (permission != PackageManager.PERMISSION_GRANTED) {
-                // 没有写的权限，去申请写的权限，会弹出对话框
-                ActivityCompat.requestPermissions(activity, PERMISSIONS_STORAGE,REQUEST_EXTERNAL_STORAGE);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-    private static final String TAG = "VenusFix";
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        verifyStoragePermissions(this);
-        mCat = new Cat();
-
+    public void doHotFix() {
         // initialize
         mPatchManager = new PatchManager(this);
         mPatchManager.init("1.0");
@@ -67,11 +46,42 @@ public Cat mCat;
         } catch (IOException e) {
             Log.e(TAG, "", e);
         }
+    }
+
+    public static void verifyStoragePermissions(Activity activity) {
+
+        try {
+            //检测是否有写的权限
+            int permission = ActivityCompat.checkSelfPermission(activity,
+                    "android.permission.WRITE_EXTERNAL_STORAGE");
+            if (permission != PackageManager.PERMISSION_GRANTED) {
+                // 没有写的权限，去申请写的权限，会弹出对话框
+                ActivityCompat.requestPermissions(activity, PERMISSIONS_STORAGE,REQUEST_EXTERNAL_STORAGE);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static final String TAG = "VenusFix";
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        verifyStoragePermissions(this);
+        mCat = new Cat();
 
         findViewById(R.id.cat).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Toast.makeText(MainActivity.this, mCat.say(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        findViewById(R.id.fix).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                MainActivity.this.doHotFix();
             }
         });
     }
