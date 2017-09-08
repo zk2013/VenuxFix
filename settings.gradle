@@ -1,1 +1,1 @@
-include ':FixDemo'
+include ':FixDemo', ':dexposedj'

@@ -5,6 +5,8 @@ import android.os.Environment;
 import android.util.Log;
 
 
+import com.venustv.dexposedj.DexposedBridge;
+
 import java.io.IOException;
 
 /**
@@ -23,6 +25,8 @@ public class FixApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        if (DexposedBridge.canDexposed(this)) {
 
+        }
     }
 }

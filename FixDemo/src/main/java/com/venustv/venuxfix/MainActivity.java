@@ -9,6 +9,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
+
+import com.venustv.dexposedj.DexposedBridge;
+import com.venustv.dexposedj.XC_MethodHook;
 import com.venustv.venuxfix.test.Cat;
 
 import java.io.IOException;
@@ -44,6 +47,20 @@ public Cat mCat;
         }//*/
     }
 
+    public void doMethodHook() {
+        DexposedBridge.findAndHookMethod(Cat.class,"say", new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                Log.i(TAG, "beforeHookedMethod");
+            }
+
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) throws Throwable  {
+                Log.i(TAG, "afterHookedMethod");
+            }
+        });
+    }
+
     public static void verifyStoragePermissions(Activity activity) {
 
         try {
@@ -77,7 +94,7 @@ public Cat mCat;
         findViewById(R.id.fix).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                MainActivity.this.doHotFix();
+                MainActivity.this.doMethodHook();
             }
         });
     }

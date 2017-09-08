@@ -1,0 +1,3 @@
+set solib-search-path H:/VenuxFix/dexposedj/obj/local/armeabi
+source D:/android_ndk/android-ndk-r10e/prebuilt/common/gdb/common.setup
+directory D:/android_ndk/android-ndk-r10e/platforms/android-9/arch-arm/usr/include D:/android_ndk/android-ndk-r10e/sources/cxx-stl/gnu-libstdc++/4.9/include D:/android_ndk/android-ndk-r10e/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi/include D:/android_ndk/android-ndk-r10e/sources/cxx-stl/gnu-libstdc++/4.9/include/backward H:/VenuxFix/dexposedj/jni
