@@ -3,7 +3,6 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/FixDemo/FixDemo.iml" filepath="$PROJECT_DIR$/FixDemo/FixDemo.iml" />
-      <module fileurl="file://$PROJECT_DIR$/VenusAndFix/VenusAndFix.iml" filepath="$PROJECT_DIR$/VenusAndFix/VenusAndFix.iml" />
       <module fileurl="file://$PROJECT_DIR$/VenuxFix.iml" filepath="$PROJECT_DIR$/VenuxFix.iml" />
     </modules>
   </component>

@@ -9,17 +9,12 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
-
-import com.alipay.euler.andfix.patch.PatchManager;
 import com.venustv.venuxfix.test.Cat;
 
 import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity {
 public Cat mCat;
-
-    private static final String VPATCH_PATH = "/out.apatch";
-    private PatchManager mPatchManager;
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
     private static String[] PERMISSIONS_STORAGE = {
@@ -28,6 +23,7 @@ public Cat mCat;
 
 
     public void doHotFix() {
+        /*
         // initialize
         mPatchManager = new PatchManager(this);
         mPatchManager.init("1.0");
@@ -45,7 +41,7 @@ public Cat mCat;
             Log.d(TAG, "apatch:" + patchFileString + " added.");
         } catch (IOException e) {
             Log.e(TAG, "", e);
-        }
+        }//*/
     }
 
     public static void verifyStoragePermissions(Activity activity) {

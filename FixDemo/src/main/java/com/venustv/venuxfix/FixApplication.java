@@ -4,7 +4,6 @@ import android.app.Application;
 import android.os.Environment;
 import android.util.Log;
 
-import com.alipay.euler.andfix.patch.PatchManager;
 
 import java.io.IOException;
 
