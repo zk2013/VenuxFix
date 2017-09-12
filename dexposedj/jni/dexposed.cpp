@@ -7,6 +7,7 @@
 
 // com.venustv.dexposedj
 #define DEXPOSED_CLASS "com/venustv/dexposedj/DexposedBridge"
+#define DEXPOSED_ADDITIONAL_CLASS "com/venustv/dexposedj/DexposedBridge$AdditionalHookInfo"
 
 #define TAG "zj" // 这个是自定义的LOG的标识
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG,TAG ,__VA_ARGS__) // 定义LOGD类型
@@ -16,6 +17,7 @@
 #define LOGF(...) __android_log_print(ANDROID_LOG_FATAL,TAG ,__VA_ARGS__) // 定义LOGF类型
 
 jclass dexposedClass = NULL;
+jclass additionalhookinfo_class = NULL;
 ClassObject* objectArrayClass = NULL;
 
 typedef Object* (*PTR_dvmInvokeMethod)(Object* obj, const Method* method,
@@ -116,6 +118,20 @@ void init_check_func(int dvm_handle) {
     dvmSetNativeFunc = (PTR_dvmSetNativeFunc)dlsym(dvm_handle, "_Z16dvmSetNativeFuncP6MethodPFvPKjP6JValuePKS_P6ThreadEPKt");
     dvmGetMethodFromReflectObj = (PTR_dvmGetMethodFromReflectObj)dlsym(dvm_handle, "_Z26dvmGetMethodFromReflectObjP6Object");
     dvmInvokeMethod = (PTR_dvmInvokeMethod)dlsym(dvm_handle, "_Z15dvmInvokeMethodP6ObjectPK6MethodP11ArrayObjectS5_P11ClassObjectb");
+}
+
+extern "C" jobject com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative(
+JNIEnv* env, jclass, jobject java_method, jint, jobject, jobject,
+jobject thiz, jobject args) {
+    LOGI("com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative");
+    return NULL;
+}
+
+extern "C" jobject com_taobao_android_dexposed_DexposedBridge_invokeSuperNative(
+JNIEnv* env, jclass, jobject thiz, jobject args, jobject java_method, jobject, jobject,
+jint slot, jboolean check) {
+      LOGI("com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative");
+      return NULL;
 }
 
 void initTypePointers() {
@@ -409,6 +425,10 @@ static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(JNIEnv* 
 
 static const JNINativeMethod dexposedMethods[] = {
     {"hookMethodNative", "(Ljava/lang/reflect/Member;Ljava/lang/Class;ILjava/lang/Object;)V", (void*)com_taobao_android_dexposed_DexposedBridge_hookMethodNative},
+    { "invokeOriginalMethodNative","(Ljava/lang/reflect/Member;I[Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
+    							(void*) com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative },
+   { "invokeSuperNative", "(Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/reflect/Member;Ljava/lang/Class;[Ljava/lang/Class;Ljava/lang/Class;I)Ljava/lang/Object;",
+    				(void*) com_taobao_android_dexposed_DexposedBridge_invokeSuperNative},
 };
 
 #define NELEM(x) (sizeof(x)/sizeof(x[0]))
@@ -423,17 +443,18 @@ static int register_com_taobao_android_dexposed_DexposedBridge(JNIEnv* env) {
 bool dexposedOnVmCreated(JNIEnv* env, const char* className) {
     bool ret = true;
 
-      keepLoadingDexposed = keepLoadingDexposed && dexposedInitMemberOffsets(env);
-        if (!keepLoadingDexposed)
-            return false;
+      //keepLoadingDexposed = keepLoadingDexposed && dexposedInitMemberOffsets(env);
+      //  if (!keepLoadingDexposed)
+      //      return false;
   LOGD("has run here");
-
+//int * ptr_xx = NULL;
+//*ptr_xx = 9;
  // disable some access checks
- if (dvmCheckClassAccess)
-    patchReturnTrue((uintptr_t) dvmCheckClassAccess);
-else
-    LOGD("dvmCheckClassAccess = NULL");
- LOGD("dvmCheckClassAccess = %08x",dvmCheckClassAccess);
+// if (dvmCheckClassAccess)
+  //  patchReturnTrue((uintptr_t) dvmCheckClassAccess);
+//else
+   // LOGD("dvmCheckClassAccess = NULL");
+ //LOGD("dvmCheckClassAccess = %08x",dvmCheckClassAccess);
 
 /*
  if (dvmCheckFieldAccess)
@@ -451,7 +472,7 @@ else
 else
     LOGD("dvmCheckMethodAccess = NULL");*/
 
- env->ExceptionClear();
+// env->ExceptionClear();
 
     dexposedClass = env->FindClass(DEXPOSED_CLASS);
 dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
@@ -462,7 +483,15 @@ dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
         return false;
     }
 
- LOGI("Found Dexposed class '%s', now initializing\n", DEXPOSED_CLASS);
+	additionalhookinfo_class = env->FindClass(DEXPOSED_ADDITIONAL_CLASS);
+    additionalhookinfo_class = reinterpret_cast<jclass>(env->NewGlobalRef(additionalhookinfo_class));
+    if (additionalhookinfo_class == NULL) {
+        LOGE("Error while loading Dexposed class '%s':\n", DEXPOSED_ADDITIONAL_CLASS);
+        env->ExceptionClear();
+        return false;
+    }
+
+    LOGI("Found Dexposed class '%s', now initializing\n", DEXPOSED_CLASS);
     if (register_com_taobao_android_dexposed_DexposedBridge(env) != JNI_OK) {
         LOGE("Could not register natives for '%s'\n", DEXPOSED_CLASS);
         return false;
@@ -470,25 +499,6 @@ dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
 
     return true;
 
-}
-
-static void com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative(const u4* args, JValue* pResult,
-            const Method* method, void* self) {
-    Method* meth = (Method*) args[1];
-    if (meth == NULL) {
-        meth = dvmGetMethodFromReflectObj((Object*) args[0]);
-        if (dexposedIsHooked(meth)) {
-            meth = (Method*) meth->insns;
-        }
-    }
-    ArrayObject* params = (ArrayObject*) args[2];
-    ClassObject* returnType = (ClassObject*) args[3];
-    Object* thisObject = (Object*) args[4]; // null for static methods
-    ArrayObject* argList = (ArrayObject*) args[5];
-
-    // invoke the method
-    pResult->l = dvmInvokeMethod(thisObject, meth, argList, params, returnType, true);
-    return;
 }
 
 static jboolean initNative(JNIEnv* env, jclass clazz) {
@@ -534,12 +544,12 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return result;
     }
 
-    initTypePointers();
+   // initTypePointers();
 dexposedInfo();
- keepLoadingDexposed = isRunningDalvik();
+ //keepLoadingDexposed = isRunningDalvik();
  keepLoadingDexposed = dexposedOnVmCreated(env, NULL);
 
-  initNative(env, NULL);
+ // initNative(env, NULL);
 
     return JNI_VERSION_1_6;
  }

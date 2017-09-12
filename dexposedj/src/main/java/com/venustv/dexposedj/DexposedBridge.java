@@ -281,7 +281,8 @@ public final class DexposedBridge {
 			if (android.os.Build.VERSION.SDK_INT == 22){
 				System.loadLibrary("dexposed_l51");
 			} else if (android.os.Build.VERSION.SDK_INT > 19 && android.os.Build.VERSION.SDK_INT <= 21){
-				System.loadLibrary("dexposed_l");
+				//System.loadLibrary("dexposed_l");
+				System.loadLibrary("dexposed");
 			} else if (android.os.Build.VERSION.SDK_INT > 14){
 				System.loadLibrary("dexposed");
 			} else {
