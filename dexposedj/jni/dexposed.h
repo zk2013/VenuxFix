@@ -21,7 +21,13 @@ const char* dexposedOffsetModesDesc[] = {
     "NO_JIT",
 };
 
+typedef unsigned char u1;
+typedef   char s1;
+typedef short s2;
+typedef int s4;
+typedef long long s8;
 typedef unsigned int u4;
+
 struct ClassObject;
 
 struct Object {
@@ -35,8 +41,32 @@ struct Object {
     u4              lock;
 };
 
-#define CLASS_FIELD_SLOTS   4
+enum PrimitiveType {
+    PRIM_NOT        = 0,       /* value is a reference type, not a primitive type */
+    PRIM_VOID       = 1,
+    PRIM_BOOLEAN    = 2,
+    PRIM_BYTE       = 3,
+    PRIM_SHORT      = 4,
+    PRIM_CHAR       = 5,
+    PRIM_INT        = 6,
+    PRIM_LONG       = 7,
+    PRIM_FLOAT      = 8,
+    PRIM_DOUBLE     = 9,
+};
 
+#define CLASS_FIELD_SLOTS   4
+enum ClassStatus {
+    CLASS_ERROR         = -1,
+
+    CLASS_NOTREADY      = 0,
+    CLASS_IDX           = 1,    /* loaded, DEX idx in super or ifaces */
+    CLASS_LOADED        = 2,    /* DEX idx values resolved */
+    CLASS_RESOLVED      = 3,    /* part of linking */
+    CLASS_VERIFYING     = 4,    /* in the process of being verified */
+    CLASS_VERIFIED      = 5,    /* logically part of linking; done pre-init */
+    CLASS_INITIALIZING  = 6,    /* class init in progress */
+    CLASS_INITIALIZED   = 7,    /* ready to go */
+};
 struct ClassObject : Object {
     /* leave space for instance data; we could access fields directly if we
        freeze the definition of java/lang/Class */
@@ -46,6 +76,19 @@ struct ClassObject : Object {
        if generated ("[C") */
     const char*     descriptor;
     char*           descriptorAlloc;
+
+     u4              accessFlags;
+     u4              serialNumber;
+     void*         pDvmDex;
+    ClassStatus status;
+    ClassObject*    verifyErrorClass;
+      u4              initThreadId;
+       size_t          objectSize;
+ ClassObject*    elementClass;
+ int             arrayDim;
+ PrimitiveType   primitiveType;
+ ClassObject*    super;
+ Object*         classLoader;
 };
 
 typedef unsigned short u2;
@@ -61,9 +104,22 @@ struct DexProto {
     const void* dexFile;     /* file the idx refers to */
     u4 protoIdx;                /* index into proto_ids table of dexFile */
 };
+union JValue {
+    u1      z;
+    s1      b;
+    u2      c;
+    s2      s;
+    s4      i;
+    s8      j;
+    float   f;
+    double  d;
+    Object* l;
+};
 
-typedef void (*DalvikBridgeFunc)(const u4* args, void* pResult,
-    const void* method, void* self);
+struct Method;
+
+typedef void (*DalvikBridgeFunc)(const u4* args, JValue* pResult,
+    const Method* method, void* self);
 
 struct Method {
     /* the class we are a part of */
@@ -231,22 +287,6 @@ struct ArrayObject : Object {
      * (e.g. for EABI); the actual allocation may be smaller than 8 bytes.
      */
     u8              contents[1];
-};
-typedef unsigned char u1;
-typedef   char s1;
-typedef short s2;
-typedef int s4;
-typedef long long s8;
-union JValue {
-    u1      z;
-    s1      b;
-    u2      c;
-    s2      s;
-    s4      i;
-    s8      j;
-    float   f;
-    double  d;
-    Object* l;
 };
 
 #endif //VENUXFIX_DEXPOSED_H

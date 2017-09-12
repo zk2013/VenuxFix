@@ -32,4 +32,14 @@
         android:layout_marginTop="134dp"
         android:id="@+id/fix" />
 
+    <Button
+        android:text="101忠狗"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/cat"
+        android:layout_alignRight="@+id/cat"
+        android:layout_alignEnd="@+id/cat"
+        android:layout_marginTop="41dp"
+        android:id="@+id/dog" />
+
 </RelativeLayout>

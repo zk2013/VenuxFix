@@ -6,6 +6,6 @@ package com.venustv.venuxfix.test;
 
 public class Cat {
     public String say() {
-        return "wangwang";
+        return "汪汪";
     }
 }

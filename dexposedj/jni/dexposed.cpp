@@ -18,9 +18,28 @@
 jclass dexposedClass = NULL;
 ClassObject* objectArrayClass = NULL;
 
+typedef Object* (*PTR_dvmInvokeMethod)(Object* obj, const Method* method,
+    ArrayObject* argList, ArrayObject* params, ClassObject* returnType,
+    bool noAccessCheck);
+PTR_dvmInvokeMethod dvmInvokeMethod = NULL;
+
+typedef Method* (*PTR_dvmGetMethodFromReflectObj)(Object* obj);
+PTR_dvmGetMethodFromReflectObj dvmGetMethodFromReflectObj = NULL;
+
+typedef void (*PTR_dvmSetNativeFunc)(Method* method, DalvikBridgeFunc func,
+    const u2* insns);
+PTR_dvmSetNativeFunc dvmSetNativeFunc = NULL;
+
 typedef void (*PTR_dvmCallMethod)(void* self, const Method* method, Object* obj,
     JValue* pResult, ...);
 PTR_dvmCallMethod dvmCallMethod = NULL;
+
+typedef bool (*PTR_dvmUnboxPrimitive)(Object* value, ClassObject* returnType,
+    JValue* pResult);
+PTR_dvmUnboxPrimitive dvmUnboxPrimitive = NULL;
+
+typedef bool (*PTR_dvmCheckException)(void* self);
+PTR_dvmCheckException dvmCheckException = NULL;
 
 typedef ArrayObject* (*PTR_dvmAllocArrayByClass)(ClassObject* arrayClass,
     size_t length, int allocFlags);
@@ -28,6 +47,12 @@ PTR_dvmAllocArrayByClass  dvmAllocArrayByClass = NULL;
 
 typedef ClassObject* (*PTR_dvmFindArrayClass)(const char* descriptor, Object* loader);
 PTR_dvmFindArrayClass dvmFindArrayClass= NULL;
+
+typedef ClassObject* (*PTR_dvmGetBoxedReturnType)(const Method* meth);
+PTR_dvmGetBoxedReturnType dvmGetBoxedReturnType = NULL;
+
+typedef void (*PTR_dvmReleaseTrackedAlloc)(Object* obj, void* self);
+PTR_dvmReleaseTrackedAlloc dvmReleaseTrackedAlloc = NULL;
 
 typedef Method* (*PTR_dvmSlotToMethod)(ClassObject* clazz, int slot);
 PTR_dvmSlotToMethod dvmSlotToMethod = NULL;
@@ -84,6 +109,13 @@ void init_check_func(int dvm_handle) {
     dvmAllocArrayByClass = (PTR_dvmAllocArrayByClass)dlsym(dvm_handle, "dvmAllocArrayByClass");
     dvmFindArrayClass = (PTR_dvmFindArrayClass)dlsym(dvm_handle, "_Z17dvmFindArrayClassPKcP6Object");
     dvmCallMethod = (PTR_dvmCallMethod)dlsym(dvm_handle, "_Z13dvmCallMethodP6ThreadPK6MethodP6ObjectP6JValuez");
+    dvmReleaseTrackedAlloc =  (PTR_dvmReleaseTrackedAlloc)dlsym(dvm_handle, "dvmReleaseTrackedAlloc");
+    dvmCheckException = (PTR_dvmCheckException)dlsym(dvm_handle, "_Z17dvmCheckExceptionP6Thread");
+    dvmGetBoxedReturnType = (PTR_dvmGetBoxedReturnType)dlsym(dvm_handle, "_Z21dvmGetBoxedReturnTypePK6Method");
+    dvmUnboxPrimitive = (PTR_dvmUnboxPrimitive)dlsym(dvm_handle, "_Z17dvmUnboxPrimitiveP6ObjectP11ClassObjectP6JValue");
+    dvmSetNativeFunc = (PTR_dvmSetNativeFunc)dlsym(dvm_handle, "_Z16dvmSetNativeFuncP6MethodPFvPKjP6JValuePKS_P6ThreadEPKt");
+    dvmGetMethodFromReflectObj = (PTR_dvmGetMethodFromReflectObj)dlsym(dvm_handle, "_Z26dvmGetMethodFromReflectObjP6Object");
+    dvmInvokeMethod = (PTR_dvmInvokeMethod)dlsym(dvm_handle, "_Z15dvmInvokeMethodP6ObjectPK6MethodP11ArrayObjectS5_P11ClassObjectb");
 }
 
 void initTypePointers() {
@@ -255,13 +287,17 @@ __inline__ bool dvmIsStaticMethod(const Method* method) {
     return (method->accessFlags & ACC_STATIC) != 0;
 }
 
-static void dexposedCallHandler(const u4* args, void* pResult, const Method* method, void* self);
+static void dexposedCallHandler(const u4* args, JValue* pResult, const Method* method, void* self);
 
 static inline bool dexposedIsHooked(const Method* method) {
     return (method->nativeFunc == &dexposedCallHandler);
 }
 
-static void dexposedCallHandler(const u4* args, void* pResult, const Method* method, void* self) {
+ static bool dvmIsPrimitiveClass(const ClassObject* clazz) {
+    return clazz->primitiveType != PRIM_NOT;
+}
+
+static void dexposedCallHandler(const u4* args, JValue* pResult, const Method* method, void* self) {
 
     LOGI("dexposedCallHandler called");
     if (!dexposedIsHooked(method)) {
@@ -290,10 +326,37 @@ static void dexposedCallHandler(const u4* args, void* pResult, const Method* met
     if (argsArray == NULL) {
         return;
     }
+    //void dvmCallMethod(Thread* self, const Method* method, Object* obj,
+       //   JValue* pResult, ...)
+
      // call the Java handler function
     JValue result;
     dvmCallMethod(self, dexposedHandleHookedMethod, NULL, &result,
         originalReflected, (int) original, additionalInfo, thisObject, argsArray);
+
+    dvmReleaseTrackedAlloc((Object *)argsArray, self);
+
+    if (dvmCheckException(self)) {
+        LOGI("dvmCheckException fail");
+        return;
+    }
+
+     ClassObject* returnType = dvmGetBoxedReturnType(method);
+     if (returnType->primitiveType == PRIM_VOID) {
+         LOGI("func return void");
+     }
+     else if (result.l == NULL) {
+          if (dvmIsPrimitiveClass(returnType)) {
+              dvmThrowIllegalArgumentException("null result when primitive expected");
+          }
+          pResult->l = NULL;
+      }
+      else
+       {
+           if (!dvmUnboxPrimitive((Object *)result.l, returnType, pResult)) {
+               dvmThrowIllegalArgumentException("dvmUnboxPrimitive exception");
+           }
+        }
 }
 
 static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(JNIEnv* env, jclass clazz, jobject reflectedMethodIndirect,
@@ -409,6 +472,25 @@ dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
 
 }
 
+static void com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative(const u4* args, JValue* pResult,
+            const Method* method, void* self) {
+    Method* meth = (Method*) args[1];
+    if (meth == NULL) {
+        meth = dvmGetMethodFromReflectObj((Object*) args[0]);
+        if (dexposedIsHooked(meth)) {
+            meth = (Method*) meth->insns;
+        }
+    }
+    ArrayObject* params = (ArrayObject*) args[2];
+    ClassObject* returnType = (ClassObject*) args[3];
+    Object* thisObject = (Object*) args[4]; // null for static methods
+    ArrayObject* argList = (ArrayObject*) args[5];
+
+    // invoke the method
+    pResult->l = dvmInvokeMethod(thisObject, meth, argList, params, returnType, true);
+    return;
+}
+
 static jboolean initNative(JNIEnv* env, jclass clazz) {
 
     dexposedHandleHookedMethod = (Method*) env->GetStaticMethodID(dexposedClass, "handleHookedMethod",
@@ -430,7 +512,17 @@ static jboolean initNative(JNIEnv* env, jclass clazz) {
         return false;
     }
 
-    return true;
+     Method* dexposedInvokeOriginalMethodNative = (Method*) env->GetStaticMethodID(dexposedClass, "invokeOriginalMethodNative",
+      "(Ljava/lang/reflect/Member;I[Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
+     if (dexposedInvokeOriginalMethodNative == NULL) {
+         LOGE("ERROR: could not find method %s.invokeOriginalMethodNative(Member, int, Class[], Class, Object, Object[])\n", DEXPOSED_CLASS);
+         dvmLogExceptionStackTrace();
+         env->ExceptionClear();
+         keepLoadingDexposed = false;
+         return false;
+     }
+     dvmSetNativeFunc(dexposedInvokeOriginalMethodNative, com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative, NULL);
+     return true;
 }
 
 extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)

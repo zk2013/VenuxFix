@@ -12,12 +12,15 @@ import android.widget.Toast;
 
 import com.venustv.dexposedj.DexposedBridge;
 import com.venustv.dexposedj.XC_MethodHook;
+import com.venustv.dexposedj.XC_MethodReplacement;
 import com.venustv.venuxfix.test.Cat;
+import com.venustv.venuxfix.test.Dog;
 
 import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity {
 public Cat mCat;
+    public Dog mDog;
 
     private static final int REQUEST_EXTERNAL_STORAGE = 1;
     private static String[] PERMISSIONS_STORAGE = {
@@ -47,6 +50,23 @@ public Cat mCat;
         }//*/
     }
 
+    public void doHotFixUsingDexposedFramework() {
+        // tom cat
+        doMethodHook();
+
+        // dog
+        doMethodReplace();
+    }
+
+    public void doMethodReplace() {
+        DexposedBridge.findAndHookMethod(Dog.class, "say", new XC_MethodReplacement() {
+            @Override
+            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                return "101忠狗汪汪汪";
+            }
+        });
+    }
+
     public void doMethodHook() {
         DexposedBridge.findAndHookMethod(Cat.class,"say", new XC_MethodHook() {
             @Override
@@ -57,6 +77,7 @@ public Cat mCat;
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable  {
                 Log.i(TAG, "afterHookedMethod");
+                param.setResult("喵喵");
             }
         });
     }
@@ -83,6 +104,7 @@ public Cat mCat;
         setContentView(R.layout.activity_main);
         verifyStoragePermissions(this);
         mCat = new Cat();
+        mDog = new Dog();
 
         findViewById(R.id.cat).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -91,10 +113,17 @@ public Cat mCat;
             }
         });
 
+        findViewById(R.id.dog).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Toast.makeText(MainActivity.this, mDog.say(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
         findViewById(R.id.fix).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                MainActivity.this.doMethodHook();
+                MainActivity.this.doHotFixUsingDexposedFramework();
             }
         });
     }
