@@ -3,6 +3,7 @@
 #include<android/log.h>
 #include <dlfcn.h>
 #include <sys/mman.h>
+#include <pthread.h>
 #include "dexposed.h"
 
 // com.venustv.dexposedj
@@ -18,67 +19,11 @@
 
 jclass dexposedClass = NULL;
 jclass additionalhookinfo_class = NULL;
-ClassObject* objectArrayClass = NULL;
-
-typedef Object* (*PTR_dvmInvokeMethod)(Object* obj, const Method* method,
-    ArrayObject* argList, ArrayObject* params, ClassObject* returnType,
-    bool noAccessCheck);
-PTR_dvmInvokeMethod dvmInvokeMethod = NULL;
-
-typedef Method* (*PTR_dvmGetMethodFromReflectObj)(Object* obj);
-PTR_dvmGetMethodFromReflectObj dvmGetMethodFromReflectObj = NULL;
-
-typedef void (*PTR_dvmSetNativeFunc)(Method* method, DalvikBridgeFunc func,
-    const u2* insns);
-PTR_dvmSetNativeFunc dvmSetNativeFunc = NULL;
-
-typedef void (*PTR_dvmCallMethod)(void* self, const Method* method, Object* obj,
-    JValue* pResult, ...);
-PTR_dvmCallMethod dvmCallMethod = NULL;
-
-typedef bool (*PTR_dvmUnboxPrimitive)(Object* value, ClassObject* returnType,
-    JValue* pResult);
-PTR_dvmUnboxPrimitive dvmUnboxPrimitive = NULL;
-
-typedef bool (*PTR_dvmCheckException)(void* self);
-PTR_dvmCheckException dvmCheckException = NULL;
-
-typedef ArrayObject* (*PTR_dvmAllocArrayByClass)(ClassObject* arrayClass,
-    size_t length, int allocFlags);
-PTR_dvmAllocArrayByClass  dvmAllocArrayByClass = NULL;
-
-typedef ClassObject* (*PTR_dvmFindArrayClass)(const char* descriptor, Object* loader);
-PTR_dvmFindArrayClass dvmFindArrayClass= NULL;
-
-typedef ClassObject* (*PTR_dvmGetBoxedReturnType)(const Method* meth);
-PTR_dvmGetBoxedReturnType dvmGetBoxedReturnType = NULL;
-
-typedef void (*PTR_dvmReleaseTrackedAlloc)(Object* obj, void* self);
-PTR_dvmReleaseTrackedAlloc dvmReleaseTrackedAlloc = NULL;
-
-typedef Method* (*PTR_dvmSlotToMethod)(ClassObject* clazz, int slot);
-PTR_dvmSlotToMethod dvmSlotToMethod = NULL;
-
-typedef void (*PTR_dvmThrowIllegalArgumentException)(const char *);
-PTR_dvmThrowIllegalArgumentException  dvmThrowIllegalArgumentException = NULL;
-
- typedef void (*PTR_dvmLogExceptionStackTrace)(void) ;
-PTR_dvmLogExceptionStackTrace dvmLogExceptionStackTrace = NULL;
-
-typedef void* (*PTR_dvmThreadSelf)();
-PTR_dvmThreadSelf dvmThreadSelf = NULL;
-
-typedef void* (*PTR_dvmDecodeIndirectRef)(void* self, void* jobj);
-PTR_dvmDecodeIndirectRef dvmDecodeIndirectRef = NULL;
-
-bool keepLoadingDexposed = false;
-void (*PTR_atrace_set_tracing_enabled)(bool) = NULL;
-int RUNNING_PLATFORM_SDK_VERSION = 0;
-
-void* PTR_gDvmJit = NULL;
-size_t arrayContentsOffset = 0;
 
 Method* dexposedHandleHookedMethod = NULL;
+
+bool keepLoadingDexposed = false;
+int RUNNING_PLATFORM_SDK_VERSION = 0;
 
 #ifndef PROPERTY_VALUE_MAX
 #define PROPERTY_VALUE_MAX  92
@@ -86,38 +31,21 @@ Method* dexposedHandleHookedMethod = NULL;
 
 extern "C" int property_get(const char *key, char *value, const char *default_value);
 
-
-//_Z19dvmCheckClassAccessPK11ClassObjectS1_
-uintptr_t dvmCheckClassAccess = 0;
-
-//_Z19dvmCheckFieldAccessPK11ClassObjectPK5Field
-uintptr_t dvmCheckFieldAccess = 0;
-
-//_Z16dvmInSamePackagePK11ClassObjectS1_
-uintptr_t dvmInSamePackage  = 0;
-
-//_Z20dvmCheckMethodAccessPK11ClassObjectPK6Method
-uintptr_t dvmCheckMethodAccess = 0;
+// art begin -----------------------------
+static bool is_started_ = false;
+static pthread_key_t pthread_key_self_ = NULL;
+typedef Object * (*PTR_ThreadDecodeJObject)(void* Thread, jobject obj);
+PTR_ThreadDecodeJObject ThreadDecodeJObject = NULL;
+// art end -------------------------------
 
 void init_check_func(int dvm_handle) {
- dvmInSamePackage = dlsym(dvm_handle, "_Z16dvmInSamePackagePK11ClassObjectS1_");
-   dvmCheckFieldAccess = dlsym(dvm_handle, "_Z19dvmCheckFieldAccessPK11ClassObjectPK5Field");
-    dvmCheckClassAccess = dlsym(dvm_handle, "_Z19dvmCheckClassAccessPK11ClassObjectS1_");
+    is_started_ =  *(bool*)(dlsym(dvm_handle, "_ZN3art6Thread11is_started_E"));
+    LOGI("is_started_ = %d",is_started_ );
+    pthread_key_self_ = *(pthread_key_t*)(dlsym(dvm_handle, "_ZN3art6Thread17pthread_key_self_E"));
+    LOGI("pthread_key_self_ = %08x",pthread_key_self_ );
 
-    dvmCheckMethodAccess = dlsym(dvm_handle, "_Z20dvmCheckMethodAccessPK11ClassObjectPK6Method");
-
-    dvmThrowIllegalArgumentException = (PTR_dvmThrowIllegalArgumentException)dlsym(dvm_handle, "_Z32dvmThrowIllegalArgumentExceptionPKc");
-    dvmSlotToMethod = (PTR_dvmSlotToMethod)dlsym(dvm_handle, "_Z15dvmSlotToMethodP11ClassObjecti");
-    dvmAllocArrayByClass = (PTR_dvmAllocArrayByClass)dlsym(dvm_handle, "dvmAllocArrayByClass");
-    dvmFindArrayClass = (PTR_dvmFindArrayClass)dlsym(dvm_handle, "_Z17dvmFindArrayClassPKcP6Object");
-    dvmCallMethod = (PTR_dvmCallMethod)dlsym(dvm_handle, "_Z13dvmCallMethodP6ThreadPK6MethodP6ObjectP6JValuez");
-    dvmReleaseTrackedAlloc =  (PTR_dvmReleaseTrackedAlloc)dlsym(dvm_handle, "dvmReleaseTrackedAlloc");
-    dvmCheckException = (PTR_dvmCheckException)dlsym(dvm_handle, "_Z17dvmCheckExceptionP6Thread");
-    dvmGetBoxedReturnType = (PTR_dvmGetBoxedReturnType)dlsym(dvm_handle, "_Z21dvmGetBoxedReturnTypePK6Method");
-    dvmUnboxPrimitive = (PTR_dvmUnboxPrimitive)dlsym(dvm_handle, "_Z17dvmUnboxPrimitiveP6ObjectP11ClassObjectP6JValue");
-    dvmSetNativeFunc = (PTR_dvmSetNativeFunc)dlsym(dvm_handle, "_Z16dvmSetNativeFuncP6MethodPFvPKjP6JValuePKS_P6ThreadEPKt");
-    dvmGetMethodFromReflectObj = (PTR_dvmGetMethodFromReflectObj)dlsym(dvm_handle, "_Z26dvmGetMethodFromReflectObjP6Object");
-    dvmInvokeMethod = (PTR_dvmInvokeMethod)dlsym(dvm_handle, "_Z15dvmInvokeMethodP6ObjectPK6MethodP11ArrayObjectS5_P11ClassObjectb");
+    ThreadDecodeJObject = (PTR_ThreadDecodeJObject)dlsym(dvm_handle, "_ZNK3art6Thread13DecodeJObjectEP8_jobject");
+    LOGI("ThreadDecodeJObject = %08x",ThreadDecodeJObject );
 }
 
 extern "C" jobject com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative(
@@ -145,26 +73,14 @@ LOGI("sdk = %s",sdk );
     dlerror();
 
      if (RUNNING_PLATFORM_SDK_VERSION >= 18) {
-     *(void **) (&PTR_atrace_set_tracing_enabled) = dlsym(RTLD_DEFAULT, "atrace_set_tracing_enabled");
-             if ((error = dlerror()) != NULL) {
-                 LOGE("Could not find address for function atrace_set_tracing_enabled: %s", error);
-             }
-             dvmLogExceptionStackTrace = (PTR_dvmLogExceptionStackTrace)dlsym(RTLD_DEFAULT, "dvmLogExceptionStackTrace");
-           if ((error = dlerror()) != NULL || NULL == dvmLogExceptionStackTrace ) {
-                 LOGE("Could not find address for function dvmLogExceptionStackTrace: %s", error);
-                }
-
-int dvm_handle = (int)dlopen("libdvm.so",RTLD_NOW);
-init_check_func(dvm_handle);
-
-               dvmThreadSelf = (PTR_dvmThreadSelf)dlsym(dvm_handle, "_Z13dvmThreadSelfv");
+        int dvm_handle = (int)dlopen("libart.so",RTLD_NOW);
+        init_check_func(dvm_handle);
+/*
+             dvmThreadSelf = (PTR_dvmThreadSelf)dlsym(dvm_handle, "_Z13dvmThreadSelfv");
              if ((error = dlerror()) != NULL || NULL == dvmThreadSelf ) {
                             LOGE("Could not find address for function dvmThreadSelf: %s", error);
-                        }
-              dvmDecodeIndirectRef = (PTR_dvmDecodeIndirectRef)dlsym(dvm_handle, "_Z20dvmDecodeIndirectRefP6ThreadP8_jobject");
-                          if ((error = dlerror()) != NULL || NULL == dvmDecodeIndirectRef  ) {
-                                         LOGE("Could not find address for function dvmDecodeIndirectRef: %s", error);
-                                     }
+                        }//*/
+
      }
 }
 
@@ -206,183 +122,32 @@ bool isRunningDalvik() {
     }
 }
 
-static bool dexposedInitMemberOffsets(JNIEnv* env)
-{
-    int ret = true;
-
-    PTR_gDvmJit = dlsym(RTLD_DEFAULT, "gDvmJit");
-    if (PTR_gDvmJit == NULL) {
-            offsetMode = MEMBER_OFFSET_MODE_NO_JIT;
-        } else {
-            offsetMode = MEMBER_OFFSET_MODE_WITH_JIT;
-     }
-     LOGD("Using structure member offsets for mode %s", dexposedOffsetModesDesc[offsetMode]);
-
-    // detect offset of ArrayObject->contents
-    jintArray dummyArray = env->NewIntArray(1);
-
-
-    if (dummyArray == NULL) {
-        LOGE("Could allocate int array for testing");
-        dvmLogExceptionStackTrace();
-        env->ExceptionClear();
-        return false;
-    }
-
-    jint* dummyArrayElements = env->GetIntArrayElements(dummyArray, NULL);
-      LOGD("qaxdw");
-      void* xx = dvmThreadSelf();
-LOGD("dwdwdwe");
-    arrayContentsOffset = (size_t)dummyArrayElements - (size_t)dvmDecodeIndirectRef(xx, dummyArray);
-    LOGD("xxxx");
-    env->ReleaseIntArrayElements(dummyArray,dummyArrayElements, 0);
-    env->DeleteLocalRef(dummyArray);
-
-    if (arrayContentsOffset < 12 || arrayContentsOffset > 128) {
-        LOGE("Detected strange offset %d of ArrayObject->contents", arrayContentsOffset);
-        return false;
-    }
-    else {
-            LOGI("Detected  offset %d of ArrayObject->contents", arrayContentsOffset);
-    }
-    return ret;
-}
-
-#define PAGESIZE (4096)
-
-static void replaceAsm(uintptr_t function, unsigned const char* newCode, size_t len) {
-#ifdef __arm__
-    function = function & ~1;
-#endif
-    uintptr_t pageStart = function & ~(PAGESIZE-1);
-    size_t pageProtectSize = PAGESIZE;
-    if (function+len > pageStart+pageProtectSize)
-        pageProtectSize += PAGESIZE;
-
-    mprotect((void*)pageStart, pageProtectSize, PROT_READ | PROT_WRITE | PROT_EXEC);
-   //   LOGI("replaceAsm 1");
-    memcpy((void*)function, newCode, len);
-    mprotect((void*)pageStart, pageProtectSize, PROT_READ | PROT_EXEC);
- //LOGI("replaceAsm 2");
-    __clear_cache((void*)function, (void*)(function+len));
-}
-
-static void patchReturnTrue(uintptr_t function) {
-// direct return true
-// why crash
-//return ;
-#ifdef __arm__
-
- //MOVS	R0, #1
- //BX	LR
-    unsigned const char asmReturnTrueThumb[] = { 0x01, 0x20, 0x70, 0x47 };
-
-   // mov r0,1
-    //  bx lr
-    unsigned const char asmReturnTrueArm[] = { 0x01, 0x00, 0xA0, 0xE3, 0x1E, 0xFF, 0x2F, 0xE1 };
-
-    LOGI("patchReturnTrue %08x", function);
-    if (function & 1)
-    {
-    LOGI("patchReturnTrue arm thumb");
-     replaceAsm(function, asmReturnTrueThumb, sizeof(asmReturnTrueThumb));
-    }
-    else
-    {
-        replaceAsm(function, asmReturnTrueArm, sizeof(asmReturnTrueArm));
-        LOGI("patchReturnTrue arm arm");
-    }
-
-#else
-  //  unsigned const char asmReturnTrueX86[] = { 0x31, 0xC0, 0x40, 0xC3 };
-   // replaceAsm(function, asmReturnTrueX86, sizeof(asmReturnTrueX86));
-#endif
-}
-
 __inline__ bool dvmIsStaticMethod(const Method* method) {
     return (method->accessFlags & ACC_STATIC) != 0;
 }
 
-static void dexposedCallHandler(const u4* args, JValue* pResult, const Method* method, void* self);
-
-static inline bool dexposedIsHooked(const Method* method) {
-    return (method->nativeFunc == &dexposedCallHandler);
-}
-
- static bool dvmIsPrimitiveClass(const ClassObject* clazz) {
-    return clazz->primitiveType != PRIM_NOT;
-}
-
-static void dexposedCallHandler(const u4* args, JValue* pResult, const Method* method, void* self) {
-
-    LOGI("dexposedCallHandler called");
-    if (!dexposedIsHooked(method)) {
-        dvmThrowIllegalArgumentException("could not find Dexposed original method - how did you even get here?");
-        return;
+static void* Art_Thread_Current() {
+    // We rely on Thread::Current returning NULL for a detached thread, so it's not obvious
+    // that we can replace this with a direct %fs access on x86.
+    if (!is_started_) {
+      return NULL;
+    } else {
+      void* thread = pthread_getspecific(pthread_key_self_);
+      return thread;
     }
-
-    DexposedHookInfo* hookInfo = (DexposedHookInfo*) method->insns;
-    Method* original = (Method*) hookInfo;
-    Object* originalReflected = hookInfo->reflectedMethod;
-    Object* additionalInfo = hookInfo->additionalInfo;
-
-    // convert/box arguments
-    const char* desc = &method->shorty[1]; // [0] is the return type.
-    Object* thisObject = NULL;
-    size_t srcIndex = 0;
-    size_t dstIndex = 0;
-
-    // for non-static methods determine the "this" pointer
-    if (!dvmIsStaticMethod(original)) {
-        thisObject = (Object*) args[0];
-        srcIndex++;
-    }
-
-    ArrayObject* argsArray = dvmAllocArrayByClass(objectArrayClass, strlen(method->shorty) - 1, ALLOC_DEFAULT);
-    if (argsArray == NULL) {
-        return;
-    }
-    //void dvmCallMethod(Thread* self, const Method* method, Object* obj,
-       //   JValue* pResult, ...)
-
-     // call the Java handler function
-    JValue result;
-    dvmCallMethod(self, dexposedHandleHookedMethod, NULL, &result,
-        originalReflected, (int) original, additionalInfo, thisObject, argsArray);
-
-    dvmReleaseTrackedAlloc((Object *)argsArray, self);
-
-    if (dvmCheckException(self)) {
-        LOGI("dvmCheckException fail");
-        return;
-    }
-
-     ClassObject* returnType = dvmGetBoxedReturnType(method);
-     if (returnType->primitiveType == PRIM_VOID) {
-         LOGI("func return void");
-     }
-     else if (result.l == NULL) {
-          if (dvmIsPrimitiveClass(returnType)) {
-              dvmThrowIllegalArgumentException("null result when primitive expected");
-          }
-          pResult->l = NULL;
-      }
-      else
-       {
-           if (!dvmUnboxPrimitive((Object *)result.l, returnType, pResult)) {
-               dvmThrowIllegalArgumentException("dvmUnboxPrimitive exception");
-           }
-        }
 }
 
 static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(JNIEnv* env, jclass clazz, jobject reflectedMethodIndirect,
             jobject declaredClassIndirect, jint slot, jobject additionalInfoIndirect) {
-        LOGI("com_taobao_android_dexposed_DexposedBridge_hookMethodNative called");
+         LOGI("com_taobao_android_dexposed_DexposedBridge_hookMethodNative called");
 
          if (declaredClassIndirect == NULL || reflectedMethodIndirect == NULL) {
-               dvmThrowIllegalArgumentException("method and declaredClass must not be null");
                 return;
             }
+        Object* obj = ThreadDecodeJObject(Art_Thread_Current(), declaredClassIndirect);
+        LOGI("declaredClass %08x", obj);
+
+/*
         ClassObject* declaredClass = (ClassObject*) dvmDecodeIndirectRef(dvmThreadSelf(), declaredClassIndirect);
         if (declaredClass->descriptor != NULL ) {
         // Lcom/venustv/venuxfix/test/Cat;
@@ -478,7 +243,7 @@ else
 dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
  if (dexposedClass == NULL) {
         LOGE("Error while loading Dexposed class '%s':\n", DEXPOSED_CLASS);
-        dvmLogExceptionStackTrace();
+     //   dvmLogExceptionStackTrace();
         env->ExceptionClear();
         return false;
     }
@@ -507,31 +272,10 @@ static jboolean initNative(JNIEnv* env, jclass clazz) {
         "(Ljava/lang/reflect/Member;ILjava/lang/Object;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
     if (dexposedHandleHookedMethod == NULL) {
         LOGE("ERROR: could not find method %s.handleHookedMethod(Member, int, Object, Object, Object[])\n", DEXPOSED_CLASS);
-        dvmLogExceptionStackTrace();
         env->ExceptionClear();
         keepLoadingDexposed = false;
         return false;
     }
-
-    objectArrayClass = dvmFindArrayClass("[Ljava/lang/Object;", NULL);
-    if (objectArrayClass == NULL) {
-        LOGE("Error while loading Object[] class");
-        dvmLogExceptionStackTrace();
-        env->ExceptionClear();
-        keepLoadingDexposed = false;
-        return false;
-    }
-
-     Method* dexposedInvokeOriginalMethodNative = (Method*) env->GetStaticMethodID(dexposedClass, "invokeOriginalMethodNative",
-      "(Ljava/lang/reflect/Member;I[Ljava/lang/Class;Ljava/lang/Class;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
-     if (dexposedInvokeOriginalMethodNative == NULL) {
-         LOGE("ERROR: could not find method %s.invokeOriginalMethodNative(Member, int, Class[], Class, Object, Object[])\n", DEXPOSED_CLASS);
-         dvmLogExceptionStackTrace();
-         env->ExceptionClear();
-         keepLoadingDexposed = false;
-         return false;
-     }
-     dvmSetNativeFunc(dexposedInvokeOriginalMethodNative, com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative, NULL);
      return true;
 }
 
@@ -544,7 +288,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)
         return result;
     }
 
-   // initTypePointers();
+    initTypePointers();
 dexposedInfo();
  //keepLoadingDexposed = isRunningDalvik();
  keepLoadingDexposed = dexposedOnVmCreated(env, NULL);
