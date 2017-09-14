@@ -43,6 +43,8 @@ PTR_String_ToModifiedUtf8 String_ToModifiedUtf8 = NULL;
 typedef std::string (*PTR_PrettyDescriptor)(Class* klass);
 PTR_PrettyDescriptor PrettyDescriptor = NULL;
 
+typedef std::string (*PTR_PrettyMethod)(ArtMethod* m, bool with_signature);
+PTR_PrettyMethod PrettyMethod = NULL;
 // art end -------------------------------
 
 void init_check_func(int dvm_handle) {
@@ -59,8 +61,10 @@ void init_check_func(int dvm_handle) {
     LOGI("String_ToModifiedUtf8 = %08x",String_ToModifiedUtf8 );
 
     PrettyDescriptor =  (PTR_PrettyDescriptor)dlsym(dvm_handle, "_ZN3art16PrettyDescriptorEPNS_6mirror5ClassE");
-     LOGI("PrettyDescriptor = %08x",PrettyDescriptor );
+    LOGI("PrettyDescriptor = %08x",PrettyDescriptor );
 
+    PrettyMethod = (PTR_PrettyMethod)dlsym(dvm_handle, "_ZN3art12PrettyMethodEPNS_6mirror9ArtMethodEb");
+    LOGI("PrettyMethod = %08x",PrettyMethod );
      // _ZN3art16WellKnownClasses42java_lang_reflect_AbstractMethod_artMethodE
 }
 
@@ -153,14 +157,70 @@ static void* Art_Thread_Current() {
     }
 }
 
+#define DUMP_TYPE(xx) { LOGI("sizeof(%s)=%d", #xx, sizeof(xx)); }
+static void dump() {
+    DUMP_TYPE(Object)
+    DUMP_TYPE(ArtField)
+}
+
+struct HookBak {
+    uint64_t entry_point_from_quick_compiled_code_;
+    uint64_t entry_point_from_jni_;
+};
+
+// this two function define in assemble
+extern "C" void art_quick_dispatcher();
+extern "C" uint64_t art_quick_call_entrypoint(ArtMethod* method, void *self, u4 **args, u4 **old_sp, const void *entrypoint);
+
+// called by function in assemble
+extern "C" uint64_t artQuickToDispatcher(ArtMethod* method, void *self, u4 **args, u4 **old_sp){
+    LOGI("artQuickToDispatcher start");
+    HookBak* bak = (HookBak*)method->entry_point_from_jni_;
+
+    const void *entrypoint = (const void *)bak->entry_point_from_quick_compiled_code_;
+    method->entry_point_from_jni_ = bak->entry_point_from_jni_;
+
+    uint64_t res = art_quick_call_entrypoint(method, self, args, old_sp, entrypoint);
+
+    method->entry_point_from_jni_ = (uint64_t)bak;
+    LOGI("artQuickToDispatcher end");
+    return res;
+}
+
+typedef uint64_t (*PTR_entrypoint)(ArtMethod* method, Object *thiz, u4 *arg1, u4 *arg2);
+
+static void EnableXposedHook(JNIEnv* env, ArtMethod* art_method, jobject additional_info) {
+    LOGI("EnableXposedHook");
+    if( art_method->entry_point_from_quick_compiled_code_ != (uint64_t)art_quick_dispatcher) {
+        PTR_entrypoint old = (PTR_entrypoint)art_method->entry_point_from_quick_compiled_code_;
+        art_method->entry_point_from_quick_compiled_code_ = (uint64_t)art_quick_dispatcher;
+        HookBak* bak = new HookBak;
+        bak->entry_point_from_jni_ = art_method->entry_point_from_jni_;
+        bak->entry_point_from_quick_compiled_code_ = (uint64_t)old;
+
+        art_method->entry_point_from_jni_ = (uint64_t)bak;
+    }
+    else{
+        LOGI("method had been hooked");
+    }
+}
+
 // private native synchronized static void hookMethodNative(Member method, Class<?> declaringClass, int slot, Object additionalInfo);
 static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(JNIEnv* env, jclass clazz, jobject reflectedMethodIndirect,
-            jobject declaredClassIndirect, jint slot, jobject additionalInfoIndirect) {
+            jobject declaredClassIndirect, jint slot, jobject additional_info) {
          LOGI("com_taobao_android_dexposed_DexposedBridge_hookMethodNative called");
 
          if (declaredClassIndirect == NULL || reflectedMethodIndirect == NULL) {
                 return;
             }
+    dump();
+    ArtMethod* smeth =
+            (ArtMethod*) env->FromReflectedMethod(reflectedMethodIndirect);
+    LOGI("alive");
+    EnableXposedHook(env, smeth, additional_info);
+    //std::string xx = PrettyMethod(smeth, true);
+    //LOGI("meth=%08x, name=%s", smeth, xx.c_str());
+    /*
         Object* obj = ThreadDecodeJObject(Art_Thread_Current(), clazz);
         LOGI("declaredClass %08x", obj);
      //    std::string cls_name = PrettyDescriptor((Class*)obj);
@@ -177,7 +237,7 @@ String* xx = cls->name_;
         }
 
  LOGI("cls_name tt");
-/*
+
         ClassObject* declaredClass = (ClassObject*) dvmDecodeIndirectRef(dvmThreadSelf(), declaredClassIndirect);
         if (declaredClass->descriptor != NULL ) {
         // Lcom/venustv/venuxfix/test/Cat;
