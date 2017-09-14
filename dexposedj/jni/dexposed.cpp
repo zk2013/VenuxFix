@@ -2,6 +2,7 @@
 #include <jni.h>
 #include<android/log.h>
 #include <dlfcn.h>
+#include <string>
 #include <sys/mman.h>
 #include <pthread.h>
 #include "dexposed.h"
@@ -20,7 +21,7 @@
 jclass dexposedClass = NULL;
 jclass additionalhookinfo_class = NULL;
 
-Method* dexposedHandleHookedMethod = NULL;
+//Method* dexposedHandleHookedMethod = NULL;
 
 bool keepLoadingDexposed = false;
 int RUNNING_PLATFORM_SDK_VERSION = 0;
@@ -36,16 +37,31 @@ static bool is_started_ = false;
 static pthread_key_t pthread_key_self_ = NULL;
 typedef Object * (*PTR_ThreadDecodeJObject)(void* Thread, jobject obj);
 PTR_ThreadDecodeJObject ThreadDecodeJObject = NULL;
+typedef std::string (*PTR_String_ToModifiedUtf8)(void* thiz);
+PTR_String_ToModifiedUtf8 String_ToModifiedUtf8 = NULL;
+
+typedef std::string (*PTR_PrettyDescriptor)(Class* klass);
+PTR_PrettyDescriptor PrettyDescriptor = NULL;
+
 // art end -------------------------------
 
 void init_check_func(int dvm_handle) {
     is_started_ =  *(bool*)(dlsym(dvm_handle, "_ZN3art6Thread11is_started_E"));
     LOGI("is_started_ = %d",is_started_ );
+
     pthread_key_self_ = *(pthread_key_t*)(dlsym(dvm_handle, "_ZN3art6Thread17pthread_key_self_E"));
     LOGI("pthread_key_self_ = %08x",pthread_key_self_ );
 
     ThreadDecodeJObject = (PTR_ThreadDecodeJObject)dlsym(dvm_handle, "_ZNK3art6Thread13DecodeJObjectEP8_jobject");
     LOGI("ThreadDecodeJObject = %08x",ThreadDecodeJObject );
+
+    String_ToModifiedUtf8 = (PTR_String_ToModifiedUtf8)dlsym(dvm_handle, "_ZN3art6mirror6String14ToModifiedUtf8Ev");
+    LOGI("String_ToModifiedUtf8 = %08x",String_ToModifiedUtf8 );
+
+    PrettyDescriptor =  (PTR_PrettyDescriptor)dlsym(dvm_handle, "_ZN3art16PrettyDescriptorEPNS_6mirror5ClassE");
+     LOGI("PrettyDescriptor = %08x",PrettyDescriptor );
+
+     // _ZN3art16WellKnownClasses42java_lang_reflect_AbstractMethod_artMethodE
 }
 
 extern "C" jobject com_taobao_android_dexposed_DexposedBridge_invokeOriginalMethodNative(
@@ -121,10 +137,10 @@ bool isRunningDalvik() {
     	return true;
     }
 }
-
+/*
 __inline__ bool dvmIsStaticMethod(const Method* method) {
     return (method->accessFlags & ACC_STATIC) != 0;
-}
+}//*/
 
 static void* Art_Thread_Current() {
     // We rely on Thread::Current returning NULL for a detached thread, so it's not obvious
@@ -137,6 +153,7 @@ static void* Art_Thread_Current() {
     }
 }
 
+// private native synchronized static void hookMethodNative(Member method, Class<?> declaringClass, int slot, Object additionalInfo);
 static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(JNIEnv* env, jclass clazz, jobject reflectedMethodIndirect,
             jobject declaredClassIndirect, jint slot, jobject additionalInfoIndirect) {
          LOGI("com_taobao_android_dexposed_DexposedBridge_hookMethodNative called");
@@ -144,9 +161,22 @@ static void com_taobao_android_dexposed_DexposedBridge_hookMethodNative(JNIEnv* 
          if (declaredClassIndirect == NULL || reflectedMethodIndirect == NULL) {
                 return;
             }
-        Object* obj = ThreadDecodeJObject(Art_Thread_Current(), declaredClassIndirect);
+        Object* obj = ThreadDecodeJObject(Art_Thread_Current(), clazz);
         LOGI("declaredClass %08x", obj);
+     //    std::string cls_name = PrettyDescriptor((Class*)obj);
+Class* cls = (Class*)obj;
+String* xx = cls->name_;
 
+ std::string cls_name = String_ToModifiedUtf8(cls->name_);
+ LOGI("cls_name xx");
+        if (cls_name.empty() ) {
+            LOGI("cls_name empty");
+        } else {
+
+                    LOGI("declaredClass name %s", cls_name.c_str());
+        }
+
+ LOGI("cls_name tt");
 /*
         ClassObject* declaredClass = (ClassObject*) dvmDecodeIndirectRef(dvmThreadSelf(), declaredClassIndirect);
         if (declaredClass->descriptor != NULL ) {
@@ -267,7 +297,7 @@ dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
 }
 
 static jboolean initNative(JNIEnv* env, jclass clazz) {
-
+/*
     dexposedHandleHookedMethod = (Method*) env->GetStaticMethodID(dexposedClass, "handleHookedMethod",
         "(Ljava/lang/reflect/Member;ILjava/lang/Object;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
     if (dexposedHandleHookedMethod == NULL) {
@@ -275,7 +305,7 @@ static jboolean initNative(JNIEnv* env, jclass clazz) {
         env->ExceptionClear();
         keepLoadingDexposed = false;
         return false;
-    }
+    }//*/
      return true;
 }
 
