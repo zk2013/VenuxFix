@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/AndFixTest/AndFixTest.iml" filepath="$PROJECT_DIR$/AndFixTest/AndFixTest.iml" />
       <module fileurl="file://$PROJECT_DIR$/FixDemo/FixDemo.iml" filepath="$PROJECT_DIR$/FixDemo/FixDemo.iml" />
       <module fileurl="file://$PROJECT_DIR$/VenuxFix.iml" filepath="$PROJECT_DIR$/VenuxFix.iml" />
       <module fileurl="file://$PROJECT_DIR$/dexposedj/dexposedj.iml" filepath="$PROJECT_DIR$/dexposedj/dexposedj.iml" />
