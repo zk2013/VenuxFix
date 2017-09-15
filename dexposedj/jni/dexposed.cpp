@@ -21,6 +21,8 @@
 jclass dexposedClass = NULL;
 jclass additionalhookinfo_class = NULL;
 
+ArtMethod* dexposedHandleHookedMethod = NULL;
+
 //Method* dexposedHandleHookedMethod = NULL;
 
 bool keepLoadingDexposed = false;
@@ -29,6 +31,8 @@ int RUNNING_PLATFORM_SDK_VERSION = 0;
 #ifndef PROPERTY_VALUE_MAX
 #define PROPERTY_VALUE_MAX  92
 #endif
+
+JavaVM* gJavaVM = NULL;
 
 extern "C" int property_get(const char *key, char *value, const char *default_value);
 
@@ -184,6 +188,22 @@ extern "C" uint64_t artQuickToDispatcher(ArtMethod* method, void *self, u4 **arg
 
     method->entry_point_from_jni_ = (uint64_t)bak;
     LOGI("artQuickToDispatcher end");
+
+    jvalue invocation_args[5];
+    invocation_args[0].l = NULL;
+    invocation_args[1].i = 0;
+    invocation_args[2].l = NULL;
+    invocation_args[3].l = NULL;
+    invocation_args[4].l = NULL;
+
+    JNIEnv* env = NULL;
+    gJavaVM->GetEnv((void**) &env, JNI_VERSION_1_6);
+
+    LOGI("artQuickToDispatcher endx");
+    env->CallStaticObjectMethodA(dexposedClass,
+                                 (jmethodID)dexposedHandleHookedMethod,
+                                 invocation_args);
+    LOGI("artQuickToDispatcher endxx");
     return res;
 }
 
@@ -357,11 +377,11 @@ dexposedClass = reinterpret_cast<jclass>(env->NewGlobalRef(dexposedClass));
 }
 
 static jboolean initNative(JNIEnv* env, jclass clazz) {
-/*
-    dexposedHandleHookedMethod = (Method*) env->GetStaticMethodID(dexposedClass, "handleHookedMethod",
+
+    dexposedHandleHookedMethod = (ArtMethod*) env->GetStaticMethodID(dexposedClass, "handleHookedMethod",
         "(Ljava/lang/reflect/Member;ILjava/lang/Object;Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
     if (dexposedHandleHookedMethod == NULL) {
-        LOGE("ERROR: could not find method %s.handleHookedMethod(Member, int, Object, Object, Object[])\n", DEXPOSED_CLASS);
+        LOGE("ERROR: could not find method %s.handleHookedMethod(Member, int, Object, Object, Object[])", DEXPOSED_CLASS);
         env->ExceptionClear();
         keepLoadingDexposed = false;
         return false;
@@ -383,7 +403,9 @@ dexposedInfo();
  //keepLoadingDexposed = isRunningDalvik();
  keepLoadingDexposed = dexposedOnVmCreated(env, NULL);
 
- // initNative(env, NULL);
+  initNative(env, NULL);
+
+    gJavaVM = vm;
 
     return JNI_VERSION_1_6;
  }
